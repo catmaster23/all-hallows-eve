@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <path d="M32 6 C35 1 42 2 40 10 C36 10 34 11 32 14" stroke="#4a5d23" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <ellipse cx="32" cy="38" rx="26" ry="22" fill="#ff6600"/>
+  <ellipse cx="32" cy="38" rx="20" ry="21" fill="#ff7700"/>
+  <ellipse cx="32" cy="38" rx="14" ry="20" fill="#ff8800"/>
+  <!-- Eyes -->
+  <polygon points="21,29 28,34 23,37" fill="#110500"/>
+  <polygon points="43,29 36,34 41,37" fill="#110500"/>
+  <polygon points="23,31 27,34 24,36" fill="#ffe066"/>
+  <polygon points="41,31 37,34 40,36" fill="#ffe066"/>
+  <!-- Nose -->
+  <polygon points="32,36 29,42 35,42" fill="#110500"/>
+  <!-- Mouth -->
+  <path d="M19 46 Q25 43 32 48 Q39 43 45 46 Q39 56 32 54 Q25 56 19 46 Z" fill="#110500"/>
+  <path d="M21 47 Q26 44 32 49 Q38 44 43 47 Q38 54 32 52 Q26 54 21 47 Z" fill="#ffcc00"/>
+  <!-- Teeth -->
+  <polygon points="24,45 26,45 25,48" fill="#ff8800"/>
+  <polygon points="38,45 40,45 39,48" fill="#ff8800"/>
+  <polygon points="31,51 33,51 32,48" fill="#ff8800"/>
+</svg>
