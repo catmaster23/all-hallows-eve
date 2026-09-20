@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 
 /**
- * Photorealistic 3D Celestial Moon with Dynamic Halloween Color Progression:
+ * Photorealistic 3D Celestial Moon with Radiant Atmospheric Glow & Halloween Color Progression:
  * - 128x128 SphereGeometry with 8K NASA craters and tactile relief.
- * - Custom lunar shader lifting dark basalt maria to eliminate any faded/black overlay
- *   while preserving 100% of photographic crater topographical fidelity.
- * - Authentic Lommel-Seeliger retroreflective lunar regolith limb illumination.
- * - Ethereal additive celestial corona glowing softly behind the sphere in the active Halloween hue.
+ * - Custom luminous lunar regolith shader with Lommel-Seeliger retroreflective rim illumination.
+ * - Multi-tier additive celestial glow:
+ *     1. Intense inner corona radiating directly from the lunar silhouette.
+ *     2. Wide nocturnal atmospheric aura washing the surrounding sky in moonlight.
+ * - Perfectly oriented along the camera line-of-sight for flawless circular radiance.
  * - Dynamic color transitions: Blue -> Red -> Yellow -> Orange -> Purple -> Blue.
  */
 
@@ -38,26 +39,88 @@ const moonFragmentShader = `
 
     // 1. Dynamic Contrast Lift:
     // Preserves 100% of Tycho rays, Copernicus rims, and basalt maria
-    // while lifting the minimum tone so dark maria never appear as a muddy black overlay.
-    float lunarTone = mix(0.48, 1.0, pow(tex.r, 0.82));
+    // while ensuring the disk is radiant and luminous without dark muddiness.
+    float lunarTone = mix(0.55, 1.15, pow(tex.r, 0.80));
 
     // 2. Lommel-Seeliger Retroreflective Regolith Limb Glow:
-    // The full moon retroreflects sunlight back to the observer, maintaining uniform disk luminosity
-    // with a crisp, subtle edge glow.
+    // Full moons retroreflect light directly back, giving uniform disk luminosity
+    // with an ethereal, luminous rim glow emitting into the corona.
     vec3 normal = normalize(vNormal);
     vec3 viewDir = normalize(vViewPosition);
     float NdotV = clamp(dot(normal, viewDir), 0.0, 1.0);
-    float limbGlow = pow(1.0 - NdotV, 3.2) * 0.35;
+    float limbGlow = pow(1.0 - NdotV, 2.4) * 0.65;
 
-    // 3. Harmonic blend with the active Halloween celestial color
+    // 3. Vibrant surface color harmonized with the active Halloween lunar color
     vec3 surfaceColor = uColor * lunarTone;
 
-    // Subtle luminous lunar highlight on high-albedo crater ejecta rays
-    vec3 craterHighlight = vec3(1.0, 0.97, 0.94) * pow(tex.r, 1.5) * 0.22;
+    // Crisp high-albedo crater ejecta rays (Tycho, Kepler)
+    vec3 craterHighlight = vec3(1.0, 0.98, 0.95) * pow(tex.r, 1.35) * 0.35;
 
-    vec3 finalColor = surfaceColor + craterHighlight + uColor * limbGlow;
+    // Luminous rim light blending with white moonlight core
+    vec3 rimLight = mix(uColor, vec3(1.0, 0.98, 0.94), 0.45) * limbGlow;
+
+    vec3 finalColor = surfaceColor + craterHighlight + rimLight;
 
     gl_FragColor = vec4(finalColor, 1.0);
+  }
+`;
+
+// Inner high-intensity corona shader
+const coronaFragmentShader = `
+  uniform vec3 uColor;
+  uniform float uTime;
+  varying vec2 vUv;
+
+  void main() {
+    // Distance from center of quad (0 at center, 1 at quad edge)
+    float r = length(vUv - vec2(0.5)) * 2.0;
+
+    // The Moon sphere edge is at rMoon = 1.0 / 2.3 = 0.4348
+    float rMoon = 0.4348;
+
+    if (r < rMoon * 0.95) {
+      // Behind the solid moon sphere
+      gl_FragColor = vec4(0.0);
+      return;
+    }
+
+    // Distance outside the moon silhouette normalized to [0, 1]
+    float dOut = max(0.0, (r - rMoon) / (1.0 - rMoon));
+
+    // Intense, radiant bloom hugging the lunar limb
+    float innerCorona = exp(-dOut * 6.5) * 1.15;
+
+    // Diffuse atmospheric corona extending into the sky
+    float outerCorona = exp(-dOut * 2.4) * 0.55;
+
+    // Subtle atmospheric breathing / shimmer
+    float shimmer = 0.94 + 0.06 * sin(uTime * 1.4 + r * 8.0);
+
+    float totalIntensity = (innerCorona + outerCorona) * shimmer;
+
+    if (totalIntensity < 0.003) discard;
+
+    // Core near the rim glows brilliant white/silver tinted with the lunar color
+    vec3 glowColor = mix(uColor, vec3(1.0, 0.98, 0.92), exp(-dOut * 12.0) * 0.65);
+
+    gl_FragColor = vec4(glowColor, min(1.0, totalIntensity));
+  }
+`;
+
+// Wide ethereal atmospheric aura shader
+const auraFragmentShader = `
+  uniform vec3 uColor;
+  uniform float uTime;
+  varying vec2 vUv;
+
+  void main() {
+    float r = length(vUv - vec2(0.5)) * 2.0;
+    float aura = pow(clamp(1.0 - r, 0.0, 1.0), 2.8) * 0.28;
+    aura *= (0.95 + 0.05 * sin(uTime * 0.8));
+
+    if (aura < 0.002) discard;
+
+    gl_FragColor = vec4(uColor, aura);
   }
 `;
 
@@ -73,11 +136,14 @@ export class Moon {
     this.position = new THREE.Vector3(0, 12, -35);
     this.group.position.copy(this.position);
 
+    // Orient group directly facing the ground observer camera at (0, 1.6, 0)
+    this.group.lookAt(0, 1.6, 0);
+
     // Default starting color: Blue Moon
     this.currentColor = new THREE.Color(0x3d7ef5);
 
+    this.initAtmosphericGlow();
     this.initMoonSphere();
-    this.initCelestialHalo();
     this.initLighting();
   }
 
@@ -141,39 +207,51 @@ export class Moon {
     );
   }
 
-  initCelestialHalo() {
-    // Soft celestial atmospheric corona glowing behind the Moon sphere
-    const haloGeo = new THREE.PlaneGeometry(this.radius * 3.2, this.radius * 3.2);
-    const haloMat = new THREE.ShaderMaterial({
+  initAtmosphericGlow() {
+    const commonVertex = `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+
+    // 1. Primary Radiant Lunar Corona (sized to 4.6x radius)
+    const coronaGeo = new THREE.PlaneGeometry(this.radius * 4.6, this.radius * 4.6);
+    this.coronaMat = new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: this.currentColor }
+        uColor: { value: this.currentColor },
+        uTime: { value: 0 }
       },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 uColor;
-        varying vec2 vUv;
-        void main() {
-          float dist = length(vUv - vec2(0.5)) * 2.0;
-          float alpha = pow(clamp(1.0 - dist, 0.0, 1.0), 2.5) * 0.32;
-          if (alpha < 0.002) discard;
-          gl_FragColor = vec4(uColor, alpha);
-        }
-      `,
+      vertexShader: commonVertex,
+      fragmentShader: coronaFragmentShader,
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending
     });
 
-    this.haloMesh = new THREE.Mesh(haloGeo, haloMat);
-    // Placed slightly behind the solid Moon sphere
-    this.haloMesh.position.set(0, 0, -this.radius * 0.30);
-    this.group.add(this.haloMesh);
+    this.coronaMesh = new THREE.Mesh(coronaGeo, this.coronaMat);
+    // Placed slightly behind the solid Moon sphere along the local lookAt Z-axis
+    this.coronaMesh.position.set(0, 0, -0.05);
+    this.group.add(this.coronaMesh);
+
+    // 2. Wide Nocturnal Sky Aura (sized to 9.0x radius)
+    const auraGeo = new THREE.PlaneGeometry(this.radius * 9.0, this.radius * 9.0);
+    this.auraMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: this.currentColor },
+        uTime: { value: 0 }
+      },
+      vertexShader: commonVertex,
+      fragmentShader: auraFragmentShader,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+
+    this.auraMesh = new THREE.Mesh(auraGeo, this.auraMat);
+    this.auraMesh.position.set(0, 0, -0.15);
+    this.group.add(this.auraMesh);
   }
 
   initLighting() {
@@ -184,7 +262,7 @@ export class Moon {
 
   /**
    * Sets active Halloween celestial color:
-   * Smoothly shifts Moon material color across the Halloween cycle.
+   * Smoothly shifts Moon material, corona, and atmospheric aura across the Halloween cycle.
    */
   setCelestialColor(color) {
     this.currentColor.copy(color);
@@ -192,8 +270,11 @@ export class Moon {
     if (this.material && this.material.uniforms && this.material.uniforms.uColor) {
       this.material.uniforms.uColor.value.copy(color);
     }
-    if (this.haloMesh && this.haloMesh.material && this.haloMesh.material.uniforms.uColor) {
-      this.haloMesh.material.uniforms.uColor.value.copy(color);
+    if (this.coronaMat && this.coronaMat.uniforms && this.coronaMat.uniforms.uColor) {
+      this.coronaMat.uniforms.uColor.value.copy(color);
+    }
+    if (this.auraMat && this.auraMat.uniforms && this.auraMat.uniforms.uColor) {
+      this.auraMat.uniforms.uColor.value.copy(color);
     }
   }
 
@@ -204,6 +285,12 @@ export class Moon {
     }
     if (this.material && this.material.uniforms.uTime) {
       this.material.uniforms.uTime.value = elapsed;
+    }
+    if (this.coronaMat && this.coronaMat.uniforms.uTime) {
+      this.coronaMat.uniforms.uTime.value = elapsed;
+    }
+    if (this.auraMat && this.auraMat.uniforms.uTime) {
+      this.auraMat.uniforms.uTime.value = elapsed;
     }
   }
 }
