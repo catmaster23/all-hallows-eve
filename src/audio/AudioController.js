@@ -1,38 +1,46 @@
 /**
- * Cello Audio Theme Controller:
- * - Plays `/audio themes/cello theme.mp3` in a continuous loop.
- * - Volume never exceeds 80% (0.80).
- * - Smoothly undulates between 80% and 50% over a 60-second period.
- * - Handles browser autoplay restrictions gracefully by auto-unlocking on first interaction.
+ * Seamless Crossfaded Cello Audio Theme Controller:
+ * - Plays `/audio themes/cello theme.mp3` in an infinite, seamless loop using
+ *   dual ping-pong audio players with automatic crossfade before track ends.
+ * - Volume continuously undulates between 50% and 80% over a 60-second cycle.
+ * - Exposes `getCycleProgress()` to drive synchronous celestial color progression.
+ * - Handles browser autoplay policies with robust user-gesture unlocking.
  */
 export class AudioController {
   constructor() {
-    this.audio = new Audio('/audio%20themes/cello%20theme.mp3');
-    this.audio.loop = true;
-    this.audio.preload = 'auto';
+    this.audioSrc = '/audio%20themes/cello%20theme.mp3';
+
+    // Dual audio players for gapless crossfading
+    this.playerA = new Audio(this.audioSrc);
+    this.playerB = new Audio(this.audioSrc);
+    this.playerA.preload = 'auto';
+    this.playerB.preload = 'auto';
+
+    this.activePlayer = this.playerA;
+    this.nextPlayer = this.playerB;
+    this.isCrossfading = false;
+    this.crossfadeDuration = 4.5; // 4.5s smooth crossfade
 
     this.maxVolume = 0.80;
     this.minVolume = 0.50;
-    this.cycleDuration = 60.0; // 60 seconds period
+    this.cycleDuration = 60.0; // 60 seconds volume cycle
     this.startTime = null;
     this.isPlaying = false;
-
-    // Set initial volume to maxVolume
-    this.audio.volume = this.maxVolume;
+    this.currentBaseVolume = this.maxVolume;
 
     this.initAutoplay();
-    this.startModulationLoop();
+    this.startAudioLoop();
   }
 
   initAutoplay() {
-    // Attempt immediate autoplay
-    const playPromise = this.audio.play();
+    this.activePlayer.volume = this.maxVolume;
+    const playPromise = this.activePlayer.play();
     if (playPromise !== undefined) {
       playPromise
         .then(() => {
           this.isPlaying = true;
           this.startTime = performance.now();
-          console.log('[AudioController] Cello theme autoplaying.');
+          console.log('[AudioController] Cello theme started with seamless crossfade looping.');
         })
         .catch((error) => {
           console.log('[AudioController] Autoplay deferred until user gesture:', error.message);
@@ -44,7 +52,7 @@ export class AudioController {
   setupGestureUnlock() {
     const unlock = () => {
       if (!this.isPlaying) {
-        this.audio.play()
+        this.activePlayer.play()
           .then(() => {
             this.isPlaying = true;
             this.startTime = performance.now();
@@ -54,7 +62,6 @@ export class AudioController {
             console.warn('[AudioController] Unlock attempt failed:', err);
           });
       }
-      // Remove listeners once invoked
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('click', unlock);
       window.removeEventListener('keydown', unlock);
@@ -69,19 +76,77 @@ export class AudioController {
     window.addEventListener('scroll', unlock, { once: true, passive: true });
   }
 
-  startModulationLoop() {
-    const updateVolume = () => {
+  startAudioLoop() {
+    const tick = () => {
       if (this.isPlaying && this.startTime !== null) {
         const elapsed = (performance.now() - this.startTime) / 1000.0;
-        // Cosine wave oscillating between 1.0 (at t=0, 60s) and 0.0 (at t=30s)
+
+        // 60-second undulating volume cycle:
+        // Starts at 80% (elapsed=0), drops to 50% (elapsed=30s), rises to 80% (elapsed=60s)
         const wave = 0.5 + 0.5 * Math.cos((2.0 * Math.PI * elapsed) / this.cycleDuration);
-        // Linear interpolation between minVolume (0.50) and maxVolume (0.80)
-        const targetVol = this.minVolume + (this.maxVolume - this.minVolume) * wave;
-        this.audio.volume = Math.max(0.0, Math.min(0.80, targetVol));
+        this.currentBaseVolume = this.minVolume + (this.maxVolume - this.minVolume) * wave;
+
+        // Crossfade check near end of track
+        const curr = this.activePlayer.currentTime;
+        const dur = this.activePlayer.duration;
+
+        if (dur && dur > this.crossfadeDuration * 2) {
+          const remaining = dur - curr;
+
+          if (remaining <= this.crossfadeDuration && !this.isCrossfading) {
+            // Trigger secondary player crossfade
+            this.isCrossfading = true;
+            this.nextPlayer.currentTime = 0;
+            this.nextPlayer.volume = 0;
+            this.nextPlayer.play().catch(e => console.warn('Next player play error:', e));
+          }
+
+          if (this.isCrossfading) {
+            const fadeProgress = Math.max(0, Math.min(1, 1 - (remaining / this.crossfadeDuration)));
+            // Equal-power / linear crossfade
+            this.activePlayer.volume = Math.max(0, Math.min(0.80, this.currentBaseVolume * (1 - fadeProgress)));
+            this.nextPlayer.volume = Math.max(0, Math.min(0.80, this.currentBaseVolume * fadeProgress));
+
+            if (remaining <= 0.2 || curr >= dur - 0.1) {
+              // Swap players
+              this.activePlayer.pause();
+              this.activePlayer.currentTime = 0;
+
+              const temp = this.activePlayer;
+              this.activePlayer = this.nextPlayer;
+              this.nextPlayer = temp;
+
+              this.activePlayer.volume = this.currentBaseVolume;
+              this.isCrossfading = false;
+            }
+          } else {
+            this.activePlayer.volume = Math.max(0, Math.min(0.80, this.currentBaseVolume));
+          }
+        } else {
+          this.activePlayer.volume = Math.max(0, Math.min(0.80, this.currentBaseVolume));
+        }
       }
-      requestAnimationFrame(updateVolume);
+
+      requestAnimationFrame(tick);
     };
 
-    requestAnimationFrame(updateVolume);
+    requestAnimationFrame(tick);
+  }
+
+  /**
+   * Returns normalized cycle progress from 0.0 to 1.0 of the 60-second cycle.
+   */
+  getCycleProgress() {
+    const elapsed = this.startTime !== null
+      ? (performance.now() - this.startTime) / 1000.0
+      : performance.now() / 1000.0;
+    return (elapsed % this.cycleDuration) / this.cycleDuration;
+  }
+
+  /**
+   * Returns current master base volume (between 0.50 and 0.80).
+   */
+  getCurrentVolume() {
+    return this.currentBaseVolume;
   }
 }

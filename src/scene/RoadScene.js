@@ -28,6 +28,19 @@ export class RoadScene {
     this.clouds = new Clouds(this.scene, this.moon.position);
     this.bats = new Bats(this.scene, this.moon.position);
 
+    // Dynamic Halloween Lunar Color Progression Palette:
+    // Blue Moon -> Blood Red -> Harvest Yellow -> Halloween Orange -> Witching Purple -> Blue Moon
+    this.lunarColors = [
+      new THREE.Color(0x3d7ef5), // 1. Blue Moon
+      new THREE.Color(0xe52b2b), // 2. Blood Red
+      new THREE.Color(0xf5be18), // 3. Harvest Yellow
+      new THREE.Color(0xff6f00), // 4. Halloween Orange
+      new THREE.Color(0x9d27b0), // 5. Witching Purple
+      new THREE.Color(0x3d7ef5)  // 6. Return to Blue Moon
+    ];
+    this.currentLunarColor = new THREE.Color(0x3d7ef5);
+    this.ambientDarkColor = new THREE.Color(0x0c1524);
+
     this.bindEvents();
   }
 
@@ -180,7 +193,7 @@ export class RoadScene {
     // Stub for scroll integration when needed
   }
 
-  update(delta, elapsed) {
+  update(delta, elapsed, cycleProgress) {
     // Smooth first-person camera gaze sway following mouse
     this.mouse.x += (this.mouse.targetX - this.mouse.x) * 0.05;
     this.mouse.y += (this.mouse.targetY - this.mouse.y) * 0.05;
@@ -194,22 +207,51 @@ export class RoadScene {
       this.cameraTarget.z
     );
 
-    // Subtle sidereal rotation of the deep celestial star dome
-    if (this.celestialDome) {
+    // Dynamic Halloween Lunar Color Progression:
+    // Synchronized with the 60-second audio cycle: Blue -> Red -> Yellow -> Orange -> Purple -> Blue
+    const p = ((cycleProgress !== undefined ? cycleProgress : (elapsed % 60.0) / 60.0) % 1.0 + 1.0) % 1.0;
+    const numSegments = 5;
+    const scaledP = p * numSegments;
+    const index = Math.floor(scaledP) % numSegments;
+    const frac = scaledP - Math.floor(scaledP);
+
+    // Smooth cubic easing for fluid chromatic transition
+    const easeT = frac * frac * (3.0 - 2.0 * frac);
+
+    const c1 = this.lunarColors[index];
+    const c2 = this.lunarColors[index + 1];
+    this.currentLunarColor.copy(c1).lerp(c2, easeT);
+
+    // 1. Physically Illuminate Moon
+    if (this.moon) {
+      this.moon.setCelestialColor(this.currentLunarColor);
+      this.moon.update(delta, elapsed);
+    }
+
+    // 2. Physically Illuminate Clouds (forward scatter rims & nocturnal ambient volume)
+    if (this.clouds) {
+      this.ambientDarkColor.set(0x0a1220).lerp(this.currentLunarColor, 0.12);
+      this.clouds.setMoonlightColor(this.currentLunarColor, this.ambientDarkColor);
+      this.clouds.update(delta, elapsed);
+    }
+
+    // 3. Physically Illuminate Bats (moonlight rim highlight)
+    if (this.bats) {
+      this.bats.setMoonlightColor(this.currentLunarColor);
+      this.bats.update(delta, elapsed);
+    }
+
+    // 4. Harmonize Celestial Dome & Cosmic Horizon
+    if (this.celestialDome && this.celestialDome.material) {
+      this.celestialDome.material.color.set(0x7886a4).lerp(this.currentLunarColor, 0.15);
       this.celestialDome.rotation.y += delta * 0.00018;
     }
     if (this.starField) {
       this.starField.rotation.y += delta * 0.00018;
     }
-
-    // Update 3D Moon
-    if (this.moon) this.moon.update(delta, elapsed);
-
-    // Update 3D Clouds with Wind Physics
-    if (this.clouds) this.clouds.update(delta, elapsed);
-
-    // Update 3D Bats
-    if (this.bats) this.bats.update(delta, elapsed);
+    if (this.scene && this.scene.background) {
+      this.scene.background.set(0x02040a).lerp(this.currentLunarColor, 0.035);
+    }
 
     // Render Scene
     this.renderer.render(this.scene, this.camera);

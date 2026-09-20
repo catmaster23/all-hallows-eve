@@ -8,11 +8,10 @@ import * as THREE from 'three';
  *     - Majestic towering cumulus banks rising across the lower & mid sky (Z = -26 to -29)
  *     - Deep cosmic cirrostratus & noctilucent veils drifting BEHIND the Moon (Z = -41 to -45)
  *     - Translucent wispy cirrus veils drifting IN FRONT OF the Moon (Z = -33.4)
- *       catching silver lining without obscuring lunar craters
  *     - Foreground atmospheric mists (Z = -22)
  * - Complete panoramic coverage across the entire widescreen (X = -85 to +85)
- * - Slow, serene, majestic celestial wind drift speed (0.12 to 0.22 units/sec)
- * - Seamless cosine edge feathering and procedural curl turbulence in GLSL
+ * - Mathematical UV edge masks and buffer border clearing eliminating any faint lines or moving edges.
+ * - Dynamic physical moonlight illumination synced with the Halloween lunar color progression.
  */
 
 const cloudVertexShader = `
@@ -45,7 +44,7 @@ const cloudFragmentShader = `
     float t = uTime * 0.05;
     vec2 flow1 = vec2(sin(uv.y * 5.5 + t), cos(uv.x * 4.8 - t * 0.8)) * uCurlScale;
     vec2 flow2 = vec2(cos(uv.y * 8.5 - t * 0.6), sin(uv.x * 7.8 + t * 0.7)) * (uCurlScale * 0.5);
-    vec2 distortedUv = clamp(uv + flow1 + flow2, vec2(0.001), vec2(0.999));
+    vec2 distortedUv = clamp(uv + flow1 + flow2, vec2(0.005), vec2(0.995));
 
     vec4 tex = texture2D(tCloud, distortedUv);
 
@@ -67,10 +66,25 @@ const cloudFragmentShader = `
     // Color gradient from rich nocturnal moonlit blue-slate to luminous silver moonlight
     vec3 cloudColor = mix(uDarkColor, uMoonColor, clamp(ridgeLight, 0.0, 1.0));
 
-    // Dynamic breathing opacity
-    float alpha = tex.a * uOpacity * (0.96 + sin(uTime * 0.16 + vWorldPos.x * 0.06) * 0.04);
+    // Mathematical UV boundary mask: smoothly fades alpha to exactly 0.000 at mesh edges,
+    // eliminating any faint border lines or moving seam artifacts
+    float edgeMaskX = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
+    float edgeMaskY = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.85, vUv.y);
+    float meshEdgeMask = edgeMaskX * edgeMaskY;
 
-    if (alpha < 0.008) discard;
+    // Dynamic breathing opacity with boundary masking
+    float alpha = tex.a * uOpacity * meshEdgeMask * (0.96 + sin(uTime * 0.16 + vWorldPos.x * 0.06) * 0.04);
+
+    // Guaranteed Foreground Lunar Clearance:
+    // If a cloud fragment is in front of the Moon (closer along Z), smoothly fade alpha to 0
+    // so no cloud plane can ever cast a dark, faded overlay or semi-transparent blob across the Moon sphere!
+    if (vWorldPos.z > uMoonPos.z - 1.5) {
+      float distToMoonXY = length(vWorldPos.xy - uMoonPos.xy);
+      float moonClearance = smoothstep(2.8, 5.2, distToMoonXY);
+      alpha *= moonClearance;
+    }
+
+    if (alpha < 0.006) discard;
 
     gl_FragColor = vec4(cloudColor, alpha);
   }
@@ -167,17 +181,22 @@ export class Clouds {
       const H = canvas.height;
 
       for (let y = 0; y < H; y++) {
-        // Vertical sine fade (soft top and bottom edges)
         const edgeY = Math.sin((y / H) * Math.PI);
-        const featherY = Math.pow(Math.max(0.0, edgeY), 0.65);
+        const featherY = Math.pow(Math.max(0.0, edgeY), 0.75);
 
         for (let x = 0; x < W; x++) {
-          // Horizontal sine fade (soft left and right boundaries)
+          const idx = (y * W + x) * 4;
+
+          // Zero out outer 4% border pixels entirely to prevent any edge bleeding
+          if (x < W * 0.04 || x > W * 0.96 || y < H * 0.04 || y > H * 0.96) {
+            data[idx + 3] = 0;
+            continue;
+          }
+
           const edgeX = Math.sin((x / W) * Math.PI);
-          const featherX = Math.pow(Math.max(0.0, edgeX), 0.55);
+          const featherX = Math.pow(Math.max(0.0, edgeX), 0.65);
           const boundaryFeather = featherX * featherY;
 
-          const idx = (y * W + x) * 4;
           const r = data[idx];
           const g = data[idx + 1];
           const b = data[idx + 2];
@@ -185,7 +204,6 @@ export class Clouds {
           // Compute cloud luminance
           const lum = (0.32 * r + 0.52 * g + 0.16 * b) / 255.0;
 
-          // Alpha thresholding with gamma curve
           let alpha = Math.max(0.0, (lum - config.threshold) / (1.0 - config.threshold));
           alpha = Math.min(1.0, Math.pow(alpha, config.gamma) * config.gain) * boundaryFeather;
 
@@ -225,8 +243,8 @@ export class Clouds {
     const {
       opacity = 0.80,
       curlScale = 0.024,
-      moonColor = new THREE.Color(0xffffff),
-      darkColor = new THREE.Color(0x324462)
+      moonColor = new THREE.Color(0x3d7ef5),
+      darkColor = new THREE.Color(0x283852)
     } = options;
 
     const mat = new THREE.ShaderMaterial({
@@ -257,57 +275,53 @@ export class Clouds {
 
     // =========================================================================
     // LAYER 1: LOWER & MID-SKY TOWERING CUMULUS CLOUD BANKS (Z = -26 to -29)
-    // Towering cumulus mountains beneath and flanking the Moon, inspired by
-    // cloud texture 3 and Rainroom's towering cumulonimbus
+    // Towering cloud masses billowing across the horizon beneath the Moon
     // =========================================================================
 
     // 1. Western Cumulus Mountain (Z = -27.5)
     this.addCloudBank({
       name: 'western_cumulus_mountain',
       texture: this.cloudTextures.cumulusMountain,
-      width: 58, height: 22,
-      x: -42, y: 6.5, z: -27.5,
+      width: 58, height: 14,
+      x: -42, y: -0.5, z: -27.5,
       speedX: 0.52 * this.windSpeed,
       minX, maxX,
       opacity: 0.88,
       curlScale: 0.022,
-      moonColor: new THREE.Color(0xf6f9ff),
-      darkColor: new THREE.Color(0x2c3e5a)
+      moonColor: new THREE.Color(0x3d7ef5),
+      darkColor: new THREE.Color(0x1a263c)
     });
 
     // 2. Eastern Cumulus Mountain (Z = -27.0)
     this.addCloudBank({
       name: 'eastern_cumulus_mountain',
       texture: this.cloudTextures.cumulusFlank,
-      width: 56, height: 21,
-      x: 38, y: 7.0, z: -27.0,
+      width: 56, height: 14,
+      x: 38, y: -0.2, z: -27.0,
       speedX: 0.48 * this.windSpeed,
       minX, maxX,
       opacity: 0.85,
       curlScale: 0.022,
-      moonColor: new THREE.Color(0xf6f9ff),
-      darkColor: new THREE.Color(0x2a3c56)
+      moonColor: new THREE.Color(0x3d7ef5),
+      darkColor: new THREE.Color(0x182438)
     });
 
     // 3. Central Valley Under-Moon Cumulus Bank (Z = -29.0)
-    // Sits in the lower sky beneath the Moon (y = 4.2), framing the horizon
     this.addCloudBank({
       name: 'central_under_moon_cumulus',
       texture: this.cloudTextures.cumulusMountain,
-      width: 52, height: 18,
-      x: -2, y: 4.2, z: -29.0,
+      width: 52, height: 13,
+      x: -2, y: -1.0, z: -29.0,
       speedX: 0.45 * this.windSpeed,
       minX, maxX,
       opacity: 0.82,
       curlScale: 0.020,
-      moonColor: new THREE.Color(0xf4f8ff),
-      darkColor: new THREE.Color(0x283852)
+      moonColor: new THREE.Color(0x3d7ef5),
+      darkColor: new THREE.Color(0x162234)
     });
 
     // =========================================================================
     // LAYER 2: HIGH CLOUDS BEHIND THE MOON (Z = -41 to -45)
-    // High cosmic veils drifting behind the 3D Moon (Z = -35), letting stars
-    // shine through the breaks while the Moon passes in front of them
     // =========================================================================
 
     // 4. High Noctilucent Veils - West (Behind Moon, Z = -43.0)
@@ -320,8 +334,8 @@ export class Clouds {
       minX, maxX,
       opacity: 0.65,
       curlScale: 0.028,
-      moonColor: new THREE.Color(0xdde8fa),
-      darkColor: new THREE.Color(0x22324a)
+      moonColor: new THREE.Color(0x3d7ef5),
+      darkColor: new THREE.Color(0x121b2c)
     });
 
     // 5. High Noctilucent Veils - East (Behind Moon, Z = -44.0)
@@ -334,8 +348,8 @@ export class Clouds {
       minX, maxX,
       opacity: 0.62,
       curlScale: 0.028,
-      moonColor: new THREE.Color(0xdce7f8),
-      darkColor: new THREE.Color(0x203046)
+      moonColor: new THREE.Color(0x3d7ef5),
+      darkColor: new THREE.Color(0x111928)
     });
 
     // 6. Deep Cirrus Ribbons (Behind Moon, Z = -41.5)
@@ -348,61 +362,60 @@ export class Clouds {
       minX, maxX,
       opacity: 0.58,
       curlScale: 0.026,
-      moonColor: new THREE.Color(0xe0ebfb),
-      darkColor: new THREE.Color(0x24344d)
+      moonColor: new THREE.Color(0x3d7ef5),
+      darkColor: new THREE.Color(0x141d2e)
     });
 
     // =========================================================================
-    // LAYER 3: TRANSIT WISPS IN FRONT OF THE MOON (Z = -33.4)
-    // Translucent wispy cirrus tendrils passing across the Moon, catching the
-    // silver lining without obscuring the 8K craters
+    // LAYER 3: CELESTIAL DRIFT VEILS (Z = -39.5 to -41.0)
+    // Drifting across the sky behind the Moon with natural depth parallax
+    // Completely eliminates any dark overlay or faded veil cutting across the Moon face!
     // =========================================================================
 
-    // 7. Delicate Lunar Transit Veil (In Front of Moon, Z = -33.4)
+    // 7. Celestial High Cirrus Veil (Behind Moon, Z = -39.5)
     this.addCloudBank({
-      name: 'lunar_transit_wisps',
+      name: 'celestial_high_cirrus_west',
       texture: this.cloudTextures.wispyCirrus,
-      width: 42, height: 16,
-      x: -18, y: 12.0, z: -33.4,
-      speedX: 0.40 * this.windSpeed,
+      width: 48, height: 16,
+      x: -28, y: 13.5, z: -39.5,
+      speedX: 0.35 * this.windSpeed,
       minX, maxX,
-      opacity: 0.34, // Translucent so craters are sharply visible!
-      curlScale: 0.030,
-      moonColor: new THREE.Color(0xffffff),
-      darkColor: new THREE.Color(0x3a4e6e)
+      opacity: 0.45,
+      curlScale: 0.026,
+      moonColor: new THREE.Color(0x3d7ef5),
+      darkColor: new THREE.Color(0x141d2e)
     });
 
-    // 8. Approaching Transit Veil - West (In Front of Moon, Z = -33.0)
+    // 8. Celestial High Cirrus Veil - East (Behind Moon, Z = -40.5)
     this.addCloudBank({
-      name: 'approaching_transit_west',
+      name: 'celestial_high_cirrus_east',
       texture: this.cloudTextures.wispyCirrus,
-      width: 40, height: 16,
-      x: -58, y: 12.5, z: -33.0,
-      speedX: 0.42 * this.windSpeed,
+      width: 50, height: 16,
+      x: 26, y: 14.0, z: -40.5,
+      speedX: 0.32 * this.windSpeed,
       minX, maxX,
-      opacity: 0.38,
-      curlScale: 0.028,
-      moonColor: new THREE.Color(0xf6f9ff),
-      darkColor: new THREE.Color(0x364a68)
+      opacity: 0.42,
+      curlScale: 0.026,
+      moonColor: new THREE.Color(0x3d7ef5),
+      darkColor: new THREE.Color(0x121a2a)
     });
 
     // =========================================================================
     // LAYER 4: FOREGROUND HORIZON MISTS (Z = -22.0)
-    // Low nocturnal atmospheric scuds across the lower viewport
     // =========================================================================
 
     // 9. Foreground Lower Horizon Mist (Z = -22.0)
     this.addCloudBank({
       name: 'foreground_lower_mist',
       texture: this.cloudTextures.cumulusFlank,
-      width: 72, height: 16,
-      x: 0, y: 2.2, z: -22.0,
+      width: 72, height: 12,
+      x: 0, y: -2.5, z: -22.0,
       speedX: 0.70 * this.windSpeed,
       minX, maxX,
-      opacity: 0.52,
+      opacity: 0.45,
       curlScale: 0.020,
-      moonColor: new THREE.Color(0xd2e0f5),
-      darkColor: new THREE.Color(0x1e2c40)
+      moonColor: new THREE.Color(0x3d7ef5),
+      darkColor: new THREE.Color(0x141e2e)
     });
   }
 
@@ -431,6 +444,24 @@ export class Clouds {
     });
   }
 
+  /**
+   * Sets physical moonlight color across all cloud materials.
+   * Shifted in real-time as the Moon cycles through Halloween colors.
+   */
+  setMoonlightColor(moonColor, ambientDarkColor) {
+    for (let i = 0; i < this.cloudMaterials.length; i++) {
+      const mat = this.cloudMaterials[i];
+      if (mat.uniforms.uMoonColor) {
+        // Highlighting edges with the active lunar color
+        mat.uniforms.uMoonColor.value.copy(moonColor);
+      }
+      if (mat.uniforms.uDarkColor && ambientDarkColor) {
+        // Ambient cloud shadows harmonize with celestial light bounce
+        mat.uniforms.uDarkColor.value.copy(ambientDarkColor);
+      }
+    }
+  }
+
   update(delta, elapsed) {
     // 1. Update shader time uniforms for dynamic internal billow flow
     for (let i = 0; i < this.cloudMaterials.length; i++) {
@@ -447,7 +478,7 @@ export class Clouds {
       // Gentle vertical atmospheric swell
       bank.mesh.position.y = bank.baseY + Math.sin(elapsed * 0.14 + bank.driftPhase) * 0.22;
 
-      // Seamless wrap-around across the panoramic boundaries
+      // Seamless wrap-around across panoramic boundaries
       if (bank.mesh.position.x > bank.maxX) {
         bank.mesh.position.x = bank.minX;
         bank.baseY += (Math.random() - 0.5) * 0.35;

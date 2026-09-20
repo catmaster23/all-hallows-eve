@@ -14,10 +14,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 1. Initialize 3D Celestial Sky Scene
   const roadScene = new RoadScene(canvas);
+  window.roadScene = roadScene;
   const clock = new THREE.Clock();
 
   // 2. Initialize Continuous Cello Theme Audio (50% - 80% undulating cycle)
   const audioController = new AudioController();
+  window.audioController = audioController;
 
   // 3. Render Animation Loop
   function animate() {
@@ -25,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const delta = Math.min(clock.getDelta(), 0.1);
     const elapsed = clock.getElapsedTime();
 
-    roadScene.update(delta, elapsed);
+    roadScene.update(delta, elapsed, audioController.getCycleProgress());
   }
 
   animate();

@@ -297,5 +297,17 @@ export class Bats {
       bat.mat.emissiveIntensity = 0.01 + proximityGlow * 0.08;
     }
   }
+
+  /**
+   * Harmonizes bat moonlight rim sheen with the active Halloween lunar color.
+   */
+  setMoonlightColor(color) {
+    for (let i = 0; i < this.bats.length; i++) {
+      if (this.bats[i].mat) {
+        const rimColor = new THREE.Color(0xdce7f8).lerp(color, 0.40);
+        this.bats[i].mat.emissive.copy(rimColor);
+      }
+    }
+  }
 }
 
