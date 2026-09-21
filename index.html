@@ -9,7 +9,7 @@
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Henny+Penny&family=Playwrite+US+Modern:wght@300;400;600&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cormorant+Garamond:wght@300;400;600&family=Henny+Penny&family=Playwrite+US+Modern:wght@300;400;600&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     
     <title>All Hallows' Eve | The Celestial Moon</title>
   </head>
@@ -17,11 +17,63 @@
     <!-- Fullscreen 3D WebGL Canvas -->
     <canvas id="webgl-canvas" class="webgl-canvas" aria-label="3D Moon in Night Sky"></canvas>
 
+    <!-- Scroll Track for Smooth Section Progression -->
+    <div id="scroll-track" class="scroll-track">
+      <section class="section section-moon" id="section-moon">
+        <!-- Bottom Prompt on Moon Screen -->
+        <div id="scroll-prompt" class="scroll-prompt" aria-label="Scroll cue">
+          <span class="prompt-text">welcome the phantoms of the hallow</span>
+          <div class="scroll-chevron">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+        </div>
+      </section>
+      
+      <section class="section section-road" id="section-road">
+        <!-- Interactive Road Section with Pumpkin & Hero Text -->
+        <div id="veil-button-container" class="scroll-prompt veil-prompt" aria-label="Open the veil into the Afterworld">
+          <button id="open-veil-btn" class="prompt-btn-reset" type="button">
+            <span class="prompt-text">open the veil</span>
+            <div class="scroll-chevron">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+          </button>
+        </div>
+      </section>
+
+      <section class="section section-afterworld" id="section-afterworld">
+        <!-- The Afterworld Section: Giant Skeleton & Flower Meadow -->
+        <div id="return-veil-container" class="return-veil-container" aria-label="Return to the Mortal Realm">
+          <button id="return-veil-btn" class="return-veil-btn" type="button">
+            <span class="return-btn-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="18 15 12 9 6 15"></polyline>
+              </svg>
+            </span>
+            <span class="return-btn-text">Return to the Mortal Realm</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
     <!-- Subtle Cinematic Vignette -->
     <div class="cinematic-overlay" aria-hidden="true">
       <div class="vignette"></div>
     </div>
 
+    <!-- Ambient Sound Indicator & Toggle (Icon Only) -->
+    <button id="audio-toggle-btn" class="audio-toggle-btn" type="button" aria-label="Toggle Halloween Audio">
+      <span class="audio-icon" id="audio-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        </svg>
+      </span>
+    </button>
 
     <script type="module" src="/src/main.js"></script>
   </body>

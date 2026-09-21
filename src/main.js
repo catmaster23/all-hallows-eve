@@ -21,7 +21,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const audioController = new AudioController();
   window.audioController = audioController;
 
-  // 3. Render Animation Loop
+  // 3. Audio Toggle Button Handler (Icon Only)
+  const audioToggleBtn = document.getElementById('audio-toggle-btn');
+  if (audioToggleBtn) {
+    audioToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      audioController.toggle();
+      if (audioController.isPlaying && !audioController.audio.paused) {
+        audioToggleBtn.classList.remove('muted');
+      } else {
+        audioToggleBtn.classList.add('muted');
+      }
+    });
+  }
+
+  // 4. Render Animation Loop
   function animate() {
     requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(), 0.1);

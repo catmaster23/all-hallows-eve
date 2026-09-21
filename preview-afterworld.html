@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Afterworld Screen Preview | All Hallows' Eve</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body, html {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        font-family: 'Outfit', sans-serif;
+      }
+      #webgl-canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        display: block;
+      }
+      .hud-overlay {
+        position: fixed;
+        top: 24px;
+        left: 24px;
+        z-index: 100;
+        background: rgba(20, 14, 10, 0.65);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 215, 150, 0.25);
+        border-radius: 16px;
+        padding: 16px 22px;
+        color: #fff6ed;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+        pointer-events: auto;
+        max-width: 440px;
+        transition: opacity 0.3s ease;
+      }
+      .hud-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #ffb74d;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        letter-spacing: 0.5px;
+      }
+      .hud-badge {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        background: rgba(255, 183, 77, 0.2);
+        border: 1px solid #ffb74d;
+        color: #ffca28;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-weight: 600;
+      }
+      .hud-desc {
+        font-size: 0.85rem;
+        line-height: 1.45;
+        color: #edd9c7;
+        margin-bottom: 10px;
+      }
+      .hud-hints {
+        font-size: 0.78rem;
+        color: #ffd8a8;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
+        padding-top: 8px;
+      }
+      .hud-hints span {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .hud-hints span::before {
+        content: "✦";
+        color: #ff9800;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="webgl-canvas"></canvas>
+
+    <div class="hud-overlay">
+      <div class="hud-title">
+        Screen 3: The Afterworld
+        <span class="hud-badge">Interactive Standalone Preview</span>
+      </div>
+      <p class="hud-desc">
+        A bright, Disney/Pixar styled afterlife meadow featuring a 70ft colossal skeleton half-buried in blooming marigolds and glowing butterflies.
+      </p>
+      <div class="hud-hints">
+        <span>Click the skeleton to trigger chest heave, skull nod & wind shockwave</span>
+        <span>Hover near perched or flying butterflies to startle them into flight</span>
+        <span>Drag mouse to orbit camera • Scroll to zoom in/out</span>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+      import { AfterworldScene } from './src/scene/AfterworldScene.js';
+
+      const canvas = document.getElementById('webgl-canvas');
+      const renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        powerPreference: 'high-performance'
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffeedd);
+
+      // Camera: 5'10" eye level (approx Y: 1.75m) facing the 70ft skeleton
+      const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 400);
+      camera.position.set(0, 2.2, 7.8);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.target.set(0, 2.6, -4.5);
+      controls.maxPolarAngle = Math.PI / 2 - 0.02; // Prevent going underground
+      controls.minDistance = 3.0;
+      controls.maxDistance = 35.0;
+
+      // Instantiate Afterworld Scene
+      const afterworld = new AfterworldScene(scene, camera, renderer);
+      afterworld.show();
+
+      const clock = new THREE.Clock();
+      const mouseNDC = new THREE.Vector2(-999, -999);
+      const raycaster = new THREE.Raycaster();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        mouseNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        afterworld.onMouseMove(mouseNDC);
+
+        // Cursor pointer styling
+        raycaster.setFromCamera(mouseNDC, camera);
+        const hits = raycaster.intersectObjects(afterworld.skeleton.raycastableMeshes, true);
+        canvas.style.cursor = hits.length > 0 ? 'pointer' : 'default';
+      });
+
+      window.addEventListener('pointerdown', (e) => {
+        // Prevent click if interacting with HUD
+        if (e.target.closest('.hud-overlay')) return;
+
+        mouseNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouseNDC, camera);
+        const hit = afterworld.onPointerDown(raycaster);
+        if (hit) {
+          console.log('[Afterworld] Skeleton clicked! Displacing meadow wind & startling butterflies.');
+        }
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const delta = Math.min(clock.getDelta(), 0.1);
+        const elapsed = clock.getElapsedTime();
+
+        controls.update();
+        afterworld.update(delta, elapsed, 0);
+        renderer.render(scene, camera);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>

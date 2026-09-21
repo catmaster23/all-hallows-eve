@@ -17,21 +17,104 @@ export class Bats {
     this.group = new THREE.Group();
 
     this.initSwarm(9);
+    this.heroTextBats = [];
+    this.initHeroTextSwarm(24);
     this.scene.add(this.group);
   }
 
-  createBatMesh(scale = 1.0) {
+  initHeroTextSwarm(count) {
+    for (let i = 0; i < count; i++) {
+      // Substantial bat scale (2.2 - 3.4 units) so flapping silhouettes are dramatically readable across letters
+      const scale = 2.2 + Math.random() * 1.2;
+      const batObj = this.createBatMesh(scale, true);
+      batObj.mesh.visible = false;
+      batObj.mesh.renderOrder = 10;
+      batObj.mesh.traverse((child) => {
+        child.renderOrder = 10;
+        if (child.material) {
+          child.material.depthTest = true;
+        }
+      });
+      this.group.add(batObj.mesh);
+
+      this.heroTextBats.push({
+        ...batObj,
+        scale,
+        active: false,
+        progress: 0,
+        speed: 0.18 + Math.random() * 0.06,
+        curve: null,
+        flapFreq: 18 + Math.random() * 6,
+        seed: Math.random() * 100,
+        delay: 0
+      });
+    }
+  }
+
+  triggerHeroTextSwarm() {
+    if (window.audioController?.soundEngine) {
+      window.audioController.soundEngine.playBatFlap(0.85);
+    }
+    // Launch multi-wave swarm from behind levitating pumpkin at Z = -13.5 swooping directly across the colossal 160-wide letters at Z = -105
+    for (let i = 0; i < this.heroTextBats.length; i++) {
+      const bat = this.heroTextBats[i];
+      bat.active = true;
+      bat.progress = 0;
+
+      // Staggered multi-wave delays: Wave 1 (0-11) and Wave 2 (12-23)
+      if (i < 12) {
+        bat.delay = i * 0.14;
+      } else {
+        bat.delay = 1.6 + (i - 12) * 0.16;
+      }
+      bat.speed = 0.14 + Math.random() * 0.04;
+
+      // Start behind the levitating pumpkin body at eye level (Y = 1.78, Z = -13.5)
+      const startX = (Math.random() - 0.5) * 1.8;
+      const startY = 1.78 + (Math.random() - 0.5) * 0.6;
+      const startZ = -14.2 - Math.random() * 0.8;
+
+      const direction = (i % 2 === 0) ? 1 : -1;
+      const yOffset = (Math.random() - 0.5) * 6.0;
+      // Spread across the vast width of the monumental "All Hallows' Eve" letters (width ~160)
+      const letterTargetX = (Math.random() - 0.5) * 110.0;
+
+      // Vast cinematic trajectory: bursts from pumpkin at Z = -13.5, rushes down highway,
+      // swoops across the colossal cement letters at Z = -105, and scatters past distant cabins into the nocturnal mist
+      const p0 = new THREE.Vector3(startX, startY, startZ);
+      const p1 = new THREE.Vector3(startX * 0.5 + direction * 8.0, 4.5 + (Math.random() - 0.5) * 2.0, -32.0);
+      const p2 = new THREE.Vector3(letterTargetX * 0.5, 9.5 + yOffset * 0.5, -62.0);
+      const p3 = new THREE.Vector3(letterTargetX, 14.5 + yOffset, -103.0); // Directly across the colossal cement text!
+      const p4 = new THREE.Vector3(letterTargetX + direction * 22.0, 18.0 + yOffset, -128.0);
+      const p5 = new THREE.Vector3(direction * (65.0 + Math.random() * 30.0), 22.0 + Math.random() * 10.0, -170.0 - Math.random() * 40.0);
+
+      bat.curve = new THREE.CatmullRomCurve3([p0, p1, p2, p3, p4, p5]);
+      bat.mesh.position.copy(p0);
+      bat.mesh.visible = false;
+    }
+  }
+
+  createBatMesh(scale = 1.0, isHeroBat = false) {
     const batGroup = new THREE.Group();
 
-    // Material: Sleek nocturnal obsidian bat body with delicate silver moonlight rim sheen
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0x07060b), // Deep dark obsidian bat leather
-      roughness: 0.88,
-      metalness: 0.0,
-      emissive: new THREE.Color(0xdce7f8), // Subtle silver lunar rim
-      emissiveIntensity: 0.01,
-      side: THREE.DoubleSide
-    });
+    // Material: Obsidian silhouette with subtle warm amber rim catching firelight for hero bats
+    const mat = isHeroBat
+      ? new THREE.MeshStandardMaterial({
+          color: new THREE.Color(0x06050a),
+          roughness: 0.62,
+          metalness: 0.18,
+          emissive: new THREE.Color(0x482810),
+          emissiveIntensity: 0.24,
+          side: THREE.DoubleSide
+        })
+      : new THREE.MeshStandardMaterial({
+          color: new THREE.Color(0x0a0910),
+          roughness: 0.75,
+          metalness: 0.05,
+          emissive: new THREE.Color(0xdce7f8),
+          emissiveIntensity: 0.18,
+          side: THREE.DoubleSide
+        });
 
     // 1. Sleek Torso / Body (snout points along +Z, tail at -Z)
     const bodyGeo = new THREE.ConeGeometry(0.08 * scale, 0.38 * scale, 6);
@@ -296,15 +379,57 @@ export class Bats {
       const proximityGlow = Math.max(0.0, 1.0 - distToMoon / 24.0);
       bat.mat.emissiveIntensity = 0.01 + proximityGlow * 0.08;
     }
+
+    // 7. Hero Text Bat Swarm Update (triggered when pumpkin is clicked)
+    for (let i = 0; i < this.heroTextBats.length; i++) {
+      const bat = this.heroTextBats[i];
+      if (!bat.active) continue;
+
+      if (bat.delay > 0) {
+        bat.delay -= delta;
+        bat.mesh.visible = false;
+        continue;
+      }
+
+      bat.mesh.visible = true;
+      bat.progress += delta * bat.speed;
+
+      if (bat.progress >= 1.0) {
+        bat.active = false;
+        bat.mesh.visible = false;
+        continue;
+      }
+
+      if (bat.curve) {
+        const point = bat.curve.getPoint(bat.progress);
+        const bob = Math.sin(elapsed * (bat.flapFreq * 0.7) + bat.seed) * 0.08;
+        bat.mesh.position.set(point.x, point.y + bob, point.z);
+
+        const tangent = bat.curve.getTangent(bat.progress).normalize();
+        bat.mesh.lookAt(
+          point.x + tangent.x,
+          point.y + bob + tangent.y,
+          point.z + tangent.z
+        );
+
+        // Bank into turns
+        bat.mesh.rotateZ(-tangent.x * 0.55);
+
+        // Rapid flapping
+        const flap = Math.sin(elapsed * bat.flapFreq + bat.seed) * 0.58;
+        bat.leftWing.rotation.z = flap;
+        bat.rightWing.rotation.z = -flap;
+      }
+    }
   }
 
   /**
    * Harmonizes bat moonlight rim sheen with the active Halloween lunar color.
    */
   setMoonlightColor(color) {
+    const rimColor = new THREE.Color(0xdce7f8).lerp(color, 0.40);
     for (let i = 0; i < this.bats.length; i++) {
       if (this.bats[i].mat) {
-        const rimColor = new THREE.Color(0xdce7f8).lerp(color, 0.40);
         this.bats[i].mat.emissive.copy(rimColor);
       }
     }
